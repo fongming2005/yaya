@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>俄羅斯方塊 (Tetris)</title>
+    <title>俄羅斯方塊 (Tetris) - 爆炸特效版</title>
     <style>
         :root {
             --bg-color: #1a1a1e;
@@ -232,6 +232,37 @@
             '#3877FF', // J
         ];
 
+        // 粒子系統：用於炸開特效
+        let particles = [];
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                // 隨機爆炸速度
+                this.vx = (Math.random() - 0.5) * 0.4;
+                this.vy = (Math.random() - 0.5) * 0.4 - 0.2; // 稍微往上彈
+                this.alpha = 1;
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.015; // 重力效果
+                this.life -= 0.02;
+                this.alpha = Math.max(0, this.life);
+            }
+            draw() {
+                context.save();
+                context.globalAlpha = this.alpha;
+                context.fillStyle = this.color;
+                context.beginPath();
+                context.arc(this.x, this.y, 0.15, 0, Math.PI * 2);
+                context.fill();
+                context.restore();
+            }
+        }
+
         function createPiece(type) {
             if (type === 'I') return [[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]];
             if (type === 'L') return [[0,2,0],[0,2,0],[0,2,2]];
@@ -255,8 +286,15 @@
             
             drawGrid();
             drawMatrix(arena, {x: 0, y: 0});
-            drawGhost(); // 繪製影子預測位置
+            drawGhost(); 
             drawMatrix(player.matrix, player.pos);
+            
+            // 繪製與更新粒子特效
+            particles = particles.filter(p => p.life > 0);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
         }
 
         function drawGrid() {
@@ -283,7 +321,6 @@
                         context.fillStyle = isGhost ? 'rgba(255, 255, 255, 0.15)' : colors[value];
                         context.fillRect(x + offset.x, y + offset.y, 1, 1);
                         
-                        // 方塊立體邊框
                         if (!isGhost) {
                             context.strokeStyle = 'rgba(0,0,0,0.3)';
                             context.lineWidth = 0.1;
@@ -400,17 +437,29 @@
             return false;
         }
 
+        // 核心邏輯更新：在消除行時生成炸開特效
         function arenaSweep() {
             let rowCount = 0;
             outer: for (let y = arena.length - 1; y > 0; --y) {
                 for (let x = 0; x < arena[y].length; ++x) {
                     if (arena[y][x] === 0) continue outer;
                 }
+                
+                // 產生炸開特效
+                for(let x = 0; x < arena[y].length; x++) {
+                    const blockColor = colors[arena[y][x]];
+                    // 每個方塊位置生成 5-8 個粒子
+                    for(let i = 0; i < 6; i++) {
+                        particles.push(new Particle(x + 0.5, y + 0.5, blockColor));
+                    }
+                }
+
                 const row = arena.splice(y, 1)[0].fill(0);
                 arena.unshift(row);
                 ++y;
                 rowCount++;
             }
+            
             if (rowCount > 0) {
                 const lineScores = [0, 40, 100, 300, 1200];
                 player.score += lineScores[rowCount] * (player.level);
@@ -447,6 +496,7 @@
 
         function startGame() {
             arena.forEach(row => row.fill(0));
+            particles = []; // 清空粒子
             player.score = 0;
             player.lines = 0;
             player.level = 1;
@@ -458,7 +508,6 @@
             update();
         }
 
-        // 輸入處理
         document.addEventListener('keydown', event => {
             if (isGameOver) return;
             if (event.key === 'ArrowLeft') playerMove(-1);
@@ -468,7 +517,6 @@
             else if (event.key === ' ') { event.preventDefault(); playerHardDrop(); }
         });
 
-        // 手機操作輔助
         function handleMove(d) { if(!isGameOver) playerMove(d); }
         function handleRotate() { if(!isGameOver) playerRotate(1); }
         function handleDrop() { if(!isGameOver) playerDrop(); }
